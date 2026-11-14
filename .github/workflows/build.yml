@@ -20,6 +20,15 @@ jobs:
           distribution: 'temurin'
 
 
+      - name: Install Android NDK
+        run: echo y | sdkmanager "ndk;27.2.12479018"
+
+      - name: Fetch hev-socks5-tunnel (tun2socks)
+        run: |
+          git clone --depth 1 --branch 2.20.0 --recursive --shallow-submodules \
+            https://github.com/heiher/hev-socks5-tunnel \
+            app/src/main/jni/hev-socks5-tunnel
+
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
