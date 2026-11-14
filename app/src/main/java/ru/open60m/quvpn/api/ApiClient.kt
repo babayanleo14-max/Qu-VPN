@@ -9,6 +9,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import ru.open60m.quvpn.model.PremiumStatus
 import ru.open60m.quvpn.model.SessionResponse
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
@@ -27,12 +28,15 @@ class ApiClient {
         .readTimeout(15, TimeUnit.SECONDS)
         .dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
-                return try {
+                val all = try {
                     Dns.SYSTEM.lookup(hostname)
                 } catch (e: Exception) {
                     // Повторная попытка резолва; публичные DNS без доп. библиотеки не задать
                     InetAddress.getAllByName(hostname).toList()
                 }
+                // Прокси доступен по IPv4, поэтому и API ходим по IPv4 — иначе сервер
+                // может запомнить наш IPv6-адрес, а к прокси мы придём с IPv4.
+                return all.filter { it is Inet4Address }.ifEmpty { all }
             }
         })
         .build()
