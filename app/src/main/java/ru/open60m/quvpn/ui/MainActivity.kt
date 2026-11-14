@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -27,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val vm: MainViewModel by viewModels()
 
-    // Запрос разрешения VPN
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -39,7 +39,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Receiver от VpnService
     private val serviceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.getStringExtra(QuVpnService.EXTRA_STATE)) {
@@ -60,7 +59,7 @@ class MainActivity : AppCompatActivity() {
 
         vm.restoreState()
         setupServerList()
-        setupToggleButton()
+        setupButtons()
         observeState()
         registerServiceReceiver()
     }
@@ -70,18 +69,14 @@ class MainActivity : AppCompatActivity() {
         unregisterReceiver(serviceReceiver)
     }
 
-    // ======== Серверы ========
     private fun setupServerList() {
-        val serverViews = listOf(
-            binding.serverDe,
-            binding.serverNl,
-            binding.serverRu
-        )
+        val serverViews = listOf(binding.serverDe, binding.serverNl, binding.serverRu)
 
         vm.servers.forEachIndexed { i, server ->
             serverViews[i].apply {
-                tvServerName.text  = server.name
-                tvServerFlag.text  = server.flag
+                ivFlag.setImageResource(server.flagRes)
+                tvServerName.text = server.name
+                tvServerCity.text = server.city
                 tvPremiumTag.visibility = if (server.premiumOnly) View.VISIBLE else View.GONE
 
                 root.setOnClickListener {
@@ -94,7 +89,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Следим за выбранным сервером
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 vm.selectedServer.collect { key ->
@@ -106,20 +100,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ======== Кнопка ========
-    private fun setupToggleButton() {
+    private fun setupButtons() {
         binding.btnToggle.setOnClickListener {
             when (vm.vpnState.value) {
                 is VpnState.Off, is VpnState.Error -> requestVpnAndConnect()
                 is VpnState.Connected -> vm.disconnect().also { stopVpnService() }
-                else -> { /* переходное состояние — игнорируем */ }
+                else -> {}
             }
+        }
+
+        binding.btnPremium.setOnClickListener {
+            openUrl("https://t.me/BelkaNet_bot?start=premium-app")
+        }
+
+        binding.btnSupport.setOnClickListener {
+            openUrl("https://t.me/OPEN60_S?text=Помощь Qu VPN❤️")
+        }
+
+        binding.btnDevices.setOnClickListener {
+            openUrl("https://t.me/BelkaNet_bot?start=ext-quattro")
         }
     }
 
+    private fun openUrl(url: String) {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }
+
     private fun requestVpnAndConnect() {
-        vm.connect()   // ViewModel запускает API-запрос
-        // Когда ViewModel перейдёт в Connected — мы запустим сервис (см. observeState)
+        vm.connect()
         val intent = VpnService.prepare(this)
         if (intent != null) {
             vpnPermissionLauncher.launch(intent)
@@ -128,7 +136,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ======== VPN Service ========
     private fun startVpnService() {
         val data = vm.getSessionData() ?: return
         val (host, port, token) = data
@@ -152,16 +159,12 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // ======== Наблюдение за состоянием ========
     private fun observeState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 vm.vpnState.collect { state ->
                     updateUI(state)
-                    // Когда сессия готова — запускаем сервис
-                    if (state is VpnState.Connected) {
-                        startVpnService()
-                    }
+                    if (state is VpnState.Connected) startVpnService()
                 }
             }
         }
@@ -176,7 +179,9 @@ class MainActivity : AppCompatActivity() {
                     tvStatus.setTextColor(getColor(R.color.status_off))
                     btnToggle.text = "Подключиться"
                     btnToggle.isEnabled = true
+                    btnToggle.setBackgroundResource(R.drawable.btn_toggle)
                     tvSub.text = "Вы не защищены"
+                    premiumBox.visibility = View.VISIBLE
                 }
                 is VpnState.Connecting -> {
                     dot.setBackgroundResource(R.drawable.dot_loading)
@@ -184,6 +189,7 @@ class MainActivity : AppCompatActivity() {
                     tvStatus.setTextColor(getColor(R.color.status_loading))
                     btnToggle.text = "Подключение…"
                     btnToggle.isEnabled = false
+                    btnToggle.setBackgroundResource(R.drawable.btn_toggle_connecting)
                     tvSub.text = "Устанавливаем соединение"
                 }
                 is VpnState.Connected -> {
@@ -193,7 +199,9 @@ class MainActivity : AppCompatActivity() {
                     tvStatus.setTextColor(getColor(R.color.status_on))
                     btnToggle.text = "Отключиться"
                     btnToggle.isEnabled = true
-                    tvSub.text = if (state.premium) "Premium активен" else "Бесплатный режим"
+                    btnToggle.setBackgroundResource(R.drawable.btn_toggle_on)
+                    tvSub.text = if (state.premium) "Premium активен" else "Бесплатный режим · 30 мин"
+                    premiumBox.visibility = if (state.premium) View.GONE else View.VISIBLE
                 }
                 is VpnState.Disconnecting -> {
                     dot.setBackgroundResource(R.drawable.dot_loading)
@@ -201,6 +209,7 @@ class MainActivity : AppCompatActivity() {
                     tvStatus.setTextColor(getColor(R.color.status_loading))
                     btnToggle.text = "Отключение…"
                     btnToggle.isEnabled = false
+                    btnToggle.setBackgroundResource(R.drawable.btn_toggle_connecting)
                     tvSub.text = "Завершаем сессию"
                 }
                 is VpnState.Error -> {
@@ -209,7 +218,9 @@ class MainActivity : AppCompatActivity() {
                     tvStatus.setTextColor(getColor(R.color.status_error))
                     btnToggle.text = "Повторить"
                     btnToggle.isEnabled = true
+                    btnToggle.setBackgroundResource(R.drawable.btn_toggle)
                     tvSub.text = state.message
+                    premiumBox.visibility = View.VISIBLE
                 }
             }
         }
