@@ -21,7 +21,11 @@ jobs:
 
 
       - name: Install Android NDK
-        run: echo y | sdkmanager "ndk;27.2.12479018"
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(ls "$SDK"/cmdline-tools/*/bin/sdkmanager | head -n 1)"
+          echo "Using $SDKMANAGER"
+          echo y | "$SDKMANAGER" --sdk_root="$SDK" "ndk;27.2.12479018"
 
       - name: Fetch hev-socks5-tunnel (tun2socks)
         run: |
