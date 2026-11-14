@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) {
-            startVpnService()
+            vm.connect()
         } else {
             Toast.makeText(this, "Разрешение VPN отклонено", Toast.LENGTH_SHORT).show()
             vm.onServiceError("Разрешение VPN отклонено")
@@ -127,12 +127,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestVpnAndConnect() {
-        vm.connect()
         val intent = VpnService.prepare(this)
         if (intent != null) {
             vpnPermissionLauncher.launch(intent)
         } else {
-            startVpnService()
+            vm.connect()
         }
     }
 
@@ -164,7 +163,10 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 vm.vpnState.collect { state ->
                     updateUI(state)
-                    if (state is VpnState.Connected) startVpnService()
+                    if (state is VpnState.Connected && !vm.tunnelStarted) {
+                        vm.tunnelStarted = true
+                        startVpnService()
+                    }
                 }
             }
         }
