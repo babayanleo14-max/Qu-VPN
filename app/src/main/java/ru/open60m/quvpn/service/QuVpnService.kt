@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -32,6 +34,7 @@ class QuVpnService : VpnService() {
         const val EXTRA_SERVER_NAME  = "server_name"
         const val EXTRA_ACCESS_TOKEN = "access_token"
         const val EXTRA_PREMIUM      = "premium"
+        const val EXTRA_DEADLINE     = "free_deadline"   // epoch ms, когда отключить бесплатный сеанс (0 = без лимита)
 
         // Broadcast обратно в UI
         const val BROADCAST_STATE = "ru.open60m.quvpn.STATE"
@@ -39,6 +42,7 @@ class QuVpnService : VpnService() {
         const val STATE_CONNECTED    = "CONNECTED"
         const val STATE_DISCONNECTED = "DISCONNECTED"
         const val STATE_ERROR        = "ERROR"
+        const val STATE_TIMEOUT      = "TIMEOUT"
         const val EXTRA_ERROR_MSG    = "error_msg"
 
         // Параметры TUN / tun2socks
@@ -46,7 +50,13 @@ class QuVpnService : VpnService() {
         private const val TUN_IPV4     = "198.18.0.1"
         private const val TUN_IPV6     = "fc00::1"
         private const val MAPDNS_ADDR  = "198.18.0.2"   // локальный DNS внутри туннеля
+
+        /** true, пока туннель поднят (используется UI, чтобы восстановить состояние при повторном открытии). */
+        @Volatile var active = false
     }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val timeoutRunnable = Runnable { onFreeTimeout() }
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var bridge: SocksHttpBridge? = null
@@ -61,15 +71,33 @@ class QuVpnService : VpnService() {
                 val name   = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "Qu VPN"
                 val token  = intent.getStringExtra(EXTRA_ACCESS_TOKEN) ?: ""
                 val premium = intent.getBooleanExtra(EXTRA_PREMIUM, false)
+                val deadline = intent.getLongExtra(EXTRA_DEADLINE, 0L)
                 startForeground(NOTIF_ID, buildNotification(name, premium))
+                scheduleTimeout(deadline)
                 startTunnel(host, port)
             }
             ACTION_DISCONNECT -> {
+                handler.removeCallbacks(timeoutRunnable)
                 stopTunnel()
                 stopSelf()
             }
         }
         return START_STICKY
+    }
+
+    // ======== Лимит бесплатного режима ========
+    private fun scheduleTimeout(deadline: Long) {
+        handler.removeCallbacks(timeoutRunnable)
+        if (deadline <= 0L) return
+        handler.postDelayed(timeoutRunnable, (deadline - System.currentTimeMillis()).coerceAtLeast(0L))
+    }
+
+    private fun onFreeTimeout() {
+        Log.d(TAG, "Free time is over, stopping tunnel")
+        stopTunnelInternal()
+        broadcastState(STATE_TIMEOUT)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     // ======== Туннель ========
@@ -114,6 +142,7 @@ class QuVpnService : VpnService() {
                 return
             }
 
+            active = true
             Log.d(TAG, "Tunnel up: socks=127.0.0.1:$socksPort proxy=$proxyHost:$proxyPort")
 
             // Самопроверка прокси в фоне: если CONNECT не проходит — VPN бесполезен, говорим почему
@@ -158,6 +187,7 @@ class QuVpnService : VpnService() {
     """.trimIndent() + "\n"
 
     private fun stopTunnelInternal() {
+        active = false
         runCatching { if (TProxyService.TProxyIsRunning()) TProxyService.TProxyStopService() }
         runCatching { vpnInterface?.close() }
         vpnInterface = null
@@ -172,6 +202,7 @@ class QuVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(timeoutRunnable)
         stopTunnel()
         super.onDestroy()
     }

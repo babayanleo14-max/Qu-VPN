@@ -39,7 +39,9 @@ sealed class VpnState {
     data class Connected(
         val serverKey: String,
         val nodeId: Int?,
-        val premium: Boolean
+        val premium: Boolean,
+        val startedAt: Long = System.currentTimeMillis(),
+        val revision: Int = 0
     ) : VpnState()
     object Disconnecting : VpnState()
     data class Error(val message: String) : VpnState()

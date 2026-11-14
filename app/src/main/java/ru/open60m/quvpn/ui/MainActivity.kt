@@ -17,11 +17,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.open60m.quvpn.R
 import ru.open60m.quvpn.databinding.ActivityMainBinding
 import ru.open60m.quvpn.model.VpnState
 import ru.open60m.quvpn.service.QuVpnService
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -44,6 +46,10 @@ class MainActivity : AppCompatActivity() {
             when (intent.getStringExtra(QuVpnService.EXTRA_STATE)) {
                 QuVpnService.STATE_CONNECTED    -> vm.onServiceConnected()
                 QuVpnService.STATE_DISCONNECTED -> vm.onServiceDisconnected()
+                QuVpnService.STATE_TIMEOUT -> {
+                    Toast.makeText(this@MainActivity, "Бесплатные 30 минут закончились", Toast.LENGTH_LONG).show()
+                    vm.onFreeTimeExpired()
+                }
                 QuVpnService.STATE_ERROR -> {
                     val msg = intent.getStringExtra(QuVpnService.EXTRA_ERROR_MSG) ?: "Ошибка"
                     vm.onServiceError(msg)
@@ -109,6 +115,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnChangeNode.setOnClickListener { vm.changeNode() }
+
         binding.btnPremium.setOnClickListener {
             openUrl("https://t.me/BelkaNet_bot?start=premium-app")
         }
@@ -135,10 +143,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startVpnService() {
+    private fun startVpnService(state: VpnState.Connected) {
         val data = vm.getSessionData() ?: return
         val (host, port, token) = data
-        val serverKey = vm.selectedServer.value
+        val serverKey = state.serverKey
         val serverName = vm.servers.find { it.key == serverKey }?.name ?: "Qu VPN"
 
         val serviceIntent = Intent(this, QuVpnService::class.java).apply {
@@ -147,7 +155,11 @@ class MainActivity : AppCompatActivity() {
             putExtra(QuVpnService.EXTRA_PROXY_PORT, port)
             putExtra(QuVpnService.EXTRA_SERVER_NAME, serverName)
             putExtra(QuVpnService.EXTRA_ACCESS_TOKEN, token)
-            putExtra(QuVpnService.EXTRA_PREMIUM, vm.premium.value)
+            putExtra(QuVpnService.EXTRA_PREMIUM, state.premium)
+            putExtra(
+                QuVpnService.EXTRA_DEADLINE,
+                if (state.premium) 0L else state.startedAt + MainViewModel.FREE_LIMIT_MS
+            )
         }
         ContextCompat.startForegroundService(this, serviceIntent)
     }
@@ -161,19 +173,54 @@ class MainActivity : AppCompatActivity() {
     private fun observeState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                vm.vpnState.collect { state ->
-                    updateUI(state)
-                    if (state is VpnState.Connected && !vm.tunnelStarted) {
-                        vm.tunnelStarted = true
-                        startVpnService()
+                launch {
+                    vm.vpnState.collect { state ->
+                        updateUI(state)
+                        // Новая сессия (подключение или смена сервера) — (пере)запускаем туннель
+                        if (state is VpnState.Connected && state.revision != vm.appliedRevision) {
+                            vm.appliedRevision = state.revision
+                            startVpnService(state)
+                        }
+                    }
+                }
+                launch {
+                    vm.switching.collect { busy ->
+                        binding.btnChangeNode.isEnabled = !busy
+                        binding.btnChangeNode.alpha = if (busy) 0.5f else 1f
+                    }
+                }
+                launch {
+                    vm.nodeMessage.collect { msg ->
+                        binding.tvNodeMsg.visibility = if (msg.isNullOrEmpty()) View.GONE else View.VISIBLE
+                        binding.tvNodeMsg.text = msg ?: ""
+                    }
+                }
+                launch {
+                    while (true) {
+                        tickFreeTimer()
+                        delay(1000)
                     }
                 }
             }
         }
     }
 
+    private fun freeSubText(state: VpnState.Connected): String {
+        val left = (state.startedAt + MainViewModel.FREE_LIMIT_MS - System.currentTimeMillis()).coerceAtLeast(0L)
+        return String.format(
+            Locale.US, "Бесплатный режим · осталось %02d:%02d",
+            left / 60_000, (left / 1000) % 60
+        )
+    }
+
+    private fun tickFreeTimer() {
+        val s = vm.vpnState.value
+        if (s is VpnState.Connected && !s.premium) binding.tvSub.text = freeSubText(s)
+    }
+
     private fun updateUI(state: VpnState) {
         with(binding) {
+            btnChangeNode.visibility = if (state is VpnState.Connected) View.VISIBLE else View.GONE
             when (state) {
                 is VpnState.Off -> {
                     dot.setBackgroundResource(R.drawable.dot_off)
@@ -202,7 +249,7 @@ class MainActivity : AppCompatActivity() {
                     btnToggle.text = "Отключиться"
                     btnToggle.isEnabled = true
                     btnToggle.setBackgroundResource(R.drawable.btn_toggle_on)
-                    tvSub.text = if (state.premium) "Premium активен" else "Бесплатный режим · 30 мин"
+                    tvSub.text = if (state.premium) "Premium активен" else freeSubText(state)
                     premiumBox.visibility = if (state.premium) View.GONE else View.VISIBLE
                 }
                 is VpnState.Disconnecting -> {

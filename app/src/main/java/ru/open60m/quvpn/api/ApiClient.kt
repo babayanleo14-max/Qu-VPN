@@ -45,13 +45,23 @@ class ApiClient {
     suspend fun createSession(
         installId: String,
         countryCode: String,
-        serverKey: String
+        serverKey: String,
+        excludeNodeIds: List<Int> = emptyList(),
+        reason: String? = null,
+        fromNodeId: Int? = null,
+        fromSessionId: String? = null
     ): SessionResponse {
         val body = JsonObject().apply {
             addProperty("install_id", installId)
             addProperty("country", countryCode)
             addProperty("server_key", serverKey)
             addProperty("supports_wait", false)
+            if (excludeNodeIds.isNotEmpty()) add("exclude_node_ids", gson.toJsonTree(excludeNodeIds))
+            if (reason != null && fromNodeId != null) {
+                addProperty("reason", reason)
+                addProperty("from_node_id", fromNodeId)
+                if (fromSessionId != null) addProperty("from_session_id", fromSessionId)
+            }
         }
         val json = apiPost("/session/create", body.toString())
         return gson.fromJson(json, SessionResponse::class.java)
