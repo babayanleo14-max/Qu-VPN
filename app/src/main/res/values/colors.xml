@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#121212</color>
+    <color name="surface">#1E1E1E</color>
+    <color name="surface_elevated">#2A2A2A</color>
+    <color name="white">#FFFFFF</color>
+    <color name="text_secondary">#888888</color>
+    <color name="gold">#F5A623</color>
+
+    <color name="status_on">#2ECC71</color>
+    <color name="status_off">#888888</color>
+    <color name="status_loading">#F5A623</color>
+    <color name="status_error">#E74C3C</color>
+
+    <color name="btn_primary">#2ECC71</color>
+    <color name="btn_primary_pressed">#27AE60</color>
+    <color name="btn_disabled">#555555</color>
+
+    <color name="server_active_border">#2ECC71</color>
+</resources>
