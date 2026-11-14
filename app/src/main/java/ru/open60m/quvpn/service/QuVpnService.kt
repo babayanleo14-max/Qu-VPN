@@ -10,13 +10,10 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import hev.htproxy.TProxyService
 import ru.open60m.quvpn.R
 import ru.open60m.quvpn.ui.MainActivity
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.nio.ByteBuffer
+import java.io.File
 
 class QuVpnService : VpnService() {
 
@@ -43,11 +40,16 @@ class QuVpnService : VpnService() {
         const val STATE_DISCONNECTED = "DISCONNECTED"
         const val STATE_ERROR        = "ERROR"
         const val EXTRA_ERROR_MSG    = "error_msg"
+
+        // Параметры TUN / tun2socks
+        private const val TUN_MTU      = 8500
+        private const val TUN_IPV4     = "198.18.0.1"
+        private const val TUN_IPV6     = "fc00::1"
+        private const val MAPDNS_ADDR  = "198.18.0.2"   // локальный DNS внутри туннеля
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var tunnelThread: Thread? = null
-    @Volatile private var running = false
+    private var bridge: SocksHttpBridge? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
@@ -60,7 +62,7 @@ class QuVpnService : VpnService() {
                 val token  = intent.getStringExtra(EXTRA_ACCESS_TOKEN) ?: ""
                 val premium = intent.getBooleanExtra(EXTRA_PREMIUM, false)
                 startForeground(NOTIF_ID, buildNotification(name, premium))
-                startTunnel(host, port, token)
+                startTunnel(host, port)
             }
             ACTION_DISCONNECT -> {
                 stopTunnel()
@@ -71,96 +73,100 @@ class QuVpnService : VpnService() {
     }
 
     // ======== Туннель ========
-    // Схема: TUN (Android) → читаем пакеты → оборачиваем в HTTP CONNECT через прокси → отдаём обратно
-    // Это упрощённая реализация через socks/http proxy + TUN forwarding.
-    // Для продакшена рекомендуется использовать tun2socks (C-либа), здесь — чистый Kotlin прототип.
+    // TUN (Android) → hev-socks5-tunnel (tun2socks, нативная) → локальный SOCKS5 (SocksHttpBridge)
+    //   → HTTP CONNECT на прокси сессии (Squid, как в расширении).
+    // DNS: mapdns внутри tun2socks отвечает фейковыми IP и передаёт мосту домены — UDP не нужен.
+    // Своё приложение исключено из VPN (addDisallowedApplication), поэтому API и сокет к прокси идут напрямую.
 
-    private fun startTunnel(proxyHost: String, proxyPort: Int, accessToken: String) {
-        running = false
-        vpnInterface?.close()
-        tunnelThread?.interrupt()
+    private fun startTunnel(proxyHost: String, proxyPort: Int) {
+        stopTunnelInternal()
 
         try {
-            // Создаём TUN-интерфейс
+            val b = SocksHttpBridge(proxyHost, proxyPort) { protect(it) }
+            val socksPort = b.start()
+            bridge = b
+
             val builder = Builder()
                 .setSession("Qu VPN")
-                .addAddress("10.0.0.2", 24)
-                .addDnsServer("8.8.8.8")
-                .addDnsServer("1.1.1.1")
-                .addRoute("0.0.0.0", 0)         // весь трафик через VPN
-                .setMtu(1500)
+                .setMtu(TUN_MTU)
+                .addAddress(TUN_IPV4, 32)
+                .addAddress(TUN_IPV6, 128)
+                .addRoute("0.0.0.0", 0)          // весь IPv4-трафик через VPN
+                .addRoute("::", 0)               // и IPv6, чтобы он не утекал мимо туннеля
+                .addDnsServer(MAPDNS_ADDR)
+            runCatching { builder.addDisallowedApplication(packageName) }
 
-            vpnInterface = builder.establish() ?: run {
+            val pfd = builder.establish()
+            if (pfd == null) {
+                b.stop(); bridge = null
                 broadcastError("Не удалось создать VPN интерфейс")
                 return
             }
+            vpnInterface = pfd
 
-            running = true
-            Log.d(TAG, "TUN interface established, proxy: $proxyHost:$proxyPort")
+            val cfg = File(filesDir, "tproxy.yml")
+            cfg.writeText(buildTunnelConfig(socksPort))
 
-            // Поток для форвардинга пакетов
-            tunnelThread = Thread({
-                val tunIn  = FileInputStream(vpnInterface!!.fileDescriptor)
-                val tunOut = FileOutputStream(vpnInterface!!.fileDescriptor)
-                val buf    = ByteBuffer.allocate(32767)
+            val ok = TProxyService.TProxyStartService(cfg.absolutePath, pfd.fd)
+            if (!ok) {
+                stopTunnelInternal()
+                broadcastError("Не удалось запустить туннель")
+                return
+            }
 
-                // Создаём прокси-соединение
-                val proxySocket = Socket()
-                try {
-                    protect(proxySocket)   // этот сокет идёт напрямую, минуя VPN
-                    proxySocket.connect(InetSocketAddress(proxyHost, proxyPort), 7000)
-                    proxySocket.soTimeout = 0
+            Log.d(TAG, "Tunnel up: socks=127.0.0.1:$socksPort proxy=$proxyHost:$proxyPort")
 
-                    // HTTP CONNECT туннель к бэкенду (probe endpoint проверяет связь)
-                    val connectReq = "CONNECT ${proxyHost}:${proxyPort} HTTP/1.1\r\nHost: ${proxyHost}:${proxyPort}\r\n\r\n"
-                    proxySocket.getOutputStream().write(connectReq.toByteArray())
-
-                    Log.d(TAG, "Proxy socket connected")
+            // Самопроверка прокси в фоне: если CONNECT не проходит — VPN бесполезен, говорим почему
+            Thread({
+                val problem = b.selfTest()
+                if (bridge !== b) return@Thread // уже остановлен/перезапущен
+                if (problem == null) {
                     broadcastState(STATE_CONNECTED)
-
-                    val proxyIn  = proxySocket.getInputStream()
-                    val proxyOut = proxySocket.getOutputStream()
-
-                    // Два параллельных потока: TUN→proxy и proxy→TUN
-                    val toProxy = Thread({
-                        val b = ByteArray(32767)
-                        while (running && !Thread.currentThread().isInterrupted) {
-                            val n = tunIn.read(b)
-                            if (n > 0) proxyOut.write(b, 0, n)
-                        }
-                    }, "tun2proxy").also { it.isDaemon = true; it.start() }
-
-                    val fromProxy = ByteArray(32767)
-                    while (running && !Thread.currentThread().isInterrupted) {
-                        val n = proxyIn.read(fromProxy)
-                        if (n > 0) tunOut.write(fromProxy, 0, n)
-                    }
-                    toProxy.interrupt()
-
-                } catch (e: Exception) {
-                    if (running) {
-                        Log.e(TAG, "Tunnel error: ${e.message}")
-                        broadcastError(e.message ?: "Ошибка туннеля")
-                    }
-                } finally {
-                    runCatching { proxySocket.close() }
+                } else {
+                    Log.e(TAG, "Self-test failed: $problem")
+                    stopTunnelInternal()
+                    broadcastError(problem)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
                 }
-            }, "vpn-tunnel").also { it.isDaemon = true }
+            }, "vpn-selftest").apply { isDaemon = true }.start()
 
-            tunnelThread!!.start()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "startTunnel failed: ${e.message}")
-            broadcastError(e.message ?: "Ошибка запуска")
+        } catch (e: Throwable) {
+            Log.e(TAG, "startTunnel failed", e)
+            stopTunnelInternal()
+            broadcastError(e.message ?: "Ошибка запуска туннеля")
         }
     }
 
-    private fun stopTunnel() {
-        running = false
-        tunnelThread?.interrupt()
-        tunnelThread = null
+    private fun buildTunnelConfig(socksPort: Int): String = """
+        tunnel:
+          mtu: $TUN_MTU
+          ipv4: $TUN_IPV4
+          ipv6: '$TUN_IPV6'
+        socks5:
+          port: $socksPort
+          address: 127.0.0.1
+          udp: 'udp'
+        mapdns:
+          address: $MAPDNS_ADDR
+          port: 53
+          network: 100.64.0.0
+          netmask: 255.192.0.0
+          cache-size: 10000
+        misc:
+          log-level: warn
+    """.trimIndent() + "\n"
+
+    private fun stopTunnelInternal() {
+        runCatching { if (TProxyService.TProxyIsRunning()) TProxyService.TProxyStopService() }
         runCatching { vpnInterface?.close() }
         vpnInterface = null
+        bridge?.stop()
+        bridge = null
+    }
+
+    private fun stopTunnel() {
+        stopTunnelInternal()
         broadcastState(STATE_DISCONNECTED)
         Log.d(TAG, "Tunnel stopped")
     }
