@@ -18,9 +18,6 @@ class ApiClient {
         private const val API_BASE     = "https://api.open60m.ru"
         private const val API_FALLBACK = "https://api2.open60m.ru"
         private val JSON_MT = "application/json; charset=utf-8".toMediaType()
-
-        // Публичные DNS — резолвят даже если системный DNS недоступен
-        private val FALLBACK_DNS = listOf("8.8.8.8", "1.1.1.1", "8.8.4.4")
     }
 
     private val gson = Gson()
@@ -28,22 +25,16 @@ class ApiClient {
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
-        .dns { hostname ->
-            // Сначала пробуем системный DNS
-            try {
-                val result = Dns.SYSTEM.lookup(hostname)
-                if (result.isNotEmpty()) return@dns result
-            } catch (_: Exception) {}
-
-            // Если не сработал — резолвим через публичные DNS вручную
-            for (dns in FALLBACK_DNS) {
-                try {
-                    val addresses = InetAddress.getAllByName(hostname)
-                    if (addresses.isNotEmpty()) return@dns addresses.toList()
-                } catch (_: Exception) {}
+        .dns(object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                return try {
+                    Dns.SYSTEM.lookup(hostname)
+                } catch (e: Exception) {
+                    // Повторная попытка резолва; публичные DNS без доп. библиотеки не задать
+                    InetAddress.getAllByName(hostname).toList()
+                }
             }
-            throw java.net.UnknownHostException("Unable to resolve $hostname")
-        }
+        })
         .build()
 
     // ---- session/create ----
