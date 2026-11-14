@@ -17,14 +17,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
 
       - uses: actions/upload-artifact@v4
         with:
