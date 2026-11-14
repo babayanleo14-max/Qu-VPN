@@ -103,22 +103,14 @@ class SocksHttpBridge(
             }
 
             // --- соединение с прокси и HTTP CONNECT ---
-            val up = Socket()
-            upstream = up
-            active.add(up)
-            protectSocket(up)
-            up.connect(InetSocketAddress(proxyHost, proxyPort), CONNECT_TIMEOUT_MS)
-            up.tcpNoDelay = true
-            up.soTimeout = HANDSHAKE_TIMEOUT_MS
-
             val target = "$host:$port"
-            up.getOutputStream().apply {
-                write("CONNECT $target HTTP/1.1\r\nHost: $target\r\n\r\n".toByteArray(Charsets.US_ASCII))
-                flush()
-            }
-            val status = readConnectStatus(up.getInputStream())
+            val (up, status) = openConnect(target)
+            upstream = up
             if (status != 200) {
                 Log.d(TAG, "CONNECT $target -> HTTP $status")
+                runCatching { up.close() }
+                active.remove(up)
+                upstream = null
                 reply(cout, if (status == 403 || status == 407) 2 else 5)
                 return
             }
@@ -139,6 +131,51 @@ class SocksHttpBridge(
             active.remove(client)
             upstream?.let { active.remove(it) }
         }
+    }
+
+    /** Открывает сокет к прокси и отправляет CONNECT. Возвращает (сокет, HTTP-код ответа). */
+    private fun openConnect(target: String): Pair<Socket, Int> {
+        val up = Socket()
+        active.add(up)
+        try {
+            protectSocket(up)
+            up.connect(InetSocketAddress(proxyHost, proxyPort), CONNECT_TIMEOUT_MS)
+            up.tcpNoDelay = true
+            up.soTimeout = HANDSHAKE_TIMEOUT_MS
+            up.getOutputStream().apply {
+                write("CONNECT $target HTTP/1.1\r\nHost: $target\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                flush()
+            }
+            return up to readConnectStatus(up.getInputStream())
+        } catch (e: Exception) {
+            runCatching { up.close() }
+            active.remove(up)
+            throw e
+        }
+    }
+
+    /**
+     * Самопроверка: CONNECT к probe-хосту через прокси (как проба в расширении).
+     * Возвращает null, если всё хорошо, иначе — понятное описание проблемы.
+     */
+    fun selfTest(target: String = "probe.open60m.ru:443"): String? {
+        var last = "неизвестная ошибка"
+        for (attempt in 1..2) {
+            try {
+                val (sock, status) = openConnect(target)
+                runCatching { sock.close() }
+                active.remove(sock)
+                if (status == 200) return null
+                last = when (status) {
+                    403, 407 -> "Прокси отклонил подключение (HTTP $status) — возможно, сервер не признал ваш IP"
+                    else -> "Прокси ответил HTTP $status"
+                }
+            } catch (e: Exception) {
+                last = "Нет связи с прокси $proxyHost:$proxyPort (${e.javaClass.simpleName}: ${e.message})"
+            }
+            if (attempt == 1) Thread.sleep(700)
+        }
+        return last
     }
 
     /** Копирует from → to; по EOF делает half-close, при ошибке закрывает обе стороны. */
