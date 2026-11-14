@@ -89,7 +89,6 @@ class QuVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)         // весь трафик через VPN
                 .setMtu(1500)
-                .also { protect(0) }             // позволяем самому себе не проксировать API-запросы
 
             vpnInterface = builder.establish() ?: run {
                 broadcastError("Не удалось создать VPN интерфейс")
