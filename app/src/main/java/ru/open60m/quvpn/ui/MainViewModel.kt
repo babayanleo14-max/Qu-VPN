@@ -34,6 +34,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var currentSession: SessionResponse? = null
 
+    // Чтобы сервис не перезапускался при каждом возврате на экран
+    @Volatile var tunnelStarted = false
+
     val servers = listOf(
         Server("de", "Германия",   "Франкфурт",              "DE", R.drawable.flag_de),
         Server("nl", "Нидерланды", "Амстердам",              "NL", R.drawable.flag_nl),
@@ -67,10 +70,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun onServiceConnected() {}
 
     fun onServiceDisconnected() {
+        tunnelStarted = false
         _vpnState.value = VpnState.Off
     }
 
     fun onServiceError(msg: String) {
+        tunnelStarted = false
         _vpnState.value = VpnState.Error(msg)
     }
 
@@ -120,6 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun doDisable() {
         _vpnState.value = VpnState.Disconnecting
+        tunnelStarted = false
         currentSession?.access_token?.let { token ->
             try { api.destroySession(token) } catch (_: Exception) {}
         }
