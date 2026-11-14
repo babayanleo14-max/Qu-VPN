@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg_dark"
@@ -10,53 +9,75 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="24dp">
 
-        <!-- Header -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Qu VPN"
-            android:textColor="@color/white"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Status row -->
+        <!-- HEADER -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center"
-            android:layout_marginBottom="32dp">
+            android:gravity="center_vertical"
+            android:paddingTop="20dp"
+            android:paddingBottom="20dp">
 
-            <View
-                android:id="@+id/dot"
-                android:layout_width="10dp"
-                android:layout_height="10dp"
-                android:background="@drawable/dot_off"
-                android:layout_marginEnd="8dp" />
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@mipmap/ic_launcher"
+                android:layout_marginEnd="12dp" />
 
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Отключено"
-                android:textColor="@color/status_off"
-                android:textSize="14sp" />
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Qu VPN"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <View
+                        android:id="@+id/dot"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:background="@drawable/dot_off"
+                        android:layout_marginEnd="6dp" />
+
+                    <TextView
+                        android:id="@+id/tvStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Отключено"
+                        android:textColor="@color/status_off"
+                        android:textSize="13sp" />
+
+                </LinearLayout>
+            </LinearLayout>
+
         </LinearLayout>
 
-        <!-- Big toggle button -->
+        <!-- MAIN BUTTON -->
         <Button
             android:id="@+id/btnToggle"
-            android:layout_width="200dp"
-            android:layout_height="200dp"
+            android:layout_width="180dp"
+            android:layout_height="180dp"
             android:layout_gravity="center_horizontal"
             android:text="Подключиться"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textColor="@color/white"
+            android:textStyle="bold"
             android:background="@drawable/btn_toggle"
             android:elevation="8dp"
             android:layout_marginBottom="8dp" />
@@ -69,38 +90,169 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp"
             android:gravity="center"
-            android:layout_marginBottom="40dp" />
+            android:layout_marginBottom="28dp" />
 
-        <!-- Servers -->
-        <TextView
+        <!-- SERVERS SECTION -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="СЕРВЕРЫ"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp"
-            android:letterSpacing="0.1"
-            android:layout_marginBottom="8dp" />
+            android:orientation="vertical"
+            android:background="@drawable/section_bg"
+            android:padding="4dp"
+            android:layout_marginBottom="12dp">
 
-        <include
-            android:id="@+id/serverDe"
-            layout="@layout/item_server"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌍"
+                    android:textSize="14sp"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="СЕРВЕРЫ"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.1" />
+
+            </LinearLayout>
+
+            <include
+                android:id="@+id/serverDe"
+                layout="@layout/item_server"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp" />
+
+            <include
+                android:id="@+id/serverNl"
+                layout="@layout/item_server"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp" />
+
+            <include
+                android:id="@+id/serverRu"
+                layout="@layout/item_server"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp" />
+
+        </LinearLayout>
+
+        <!-- PREMIUM BOX -->
+        <LinearLayout
+            android:id="@+id/premiumBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp" />
+            android:orientation="vertical"
+            android:background="@drawable/section_bg"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp">
 
-        <include
-            android:id="@+id/serverNl"
-            layout="@layout/item_server"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="👑 PREMIUM"
+                    android:textColor="@color/gold"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:background="#1af5a623"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="⚡ Скорость"
+                    android:textColor="@color/gold"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:background="#1af5a623"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🔔 24/7"
+                    android:textColor="@color/gold"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:background="#1af5a623"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp" />
+
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnPremium"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="👑 Без ограничений — 60 ₽ / месяц"
+                android:textColor="#1a1200"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:background="@drawable/premium_btn_bg" />
+
+        </LinearLayout>
+
+        <!-- SUPPORT -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp" />
+            android:orientation="horizontal">
 
-        <include
-            android:id="@+id/serverRu"
-            layout="@layout/item_server"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp" />
+            <Button
+                android:id="@+id/btnSupport"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="💬 Помощь"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:background="@drawable/section_bg"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnDevices"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="📱 VPN для устройств"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:background="@drawable/section_bg" />
+
+        </LinearLayout>
 
     </LinearLayout>
 </ScrollView>
