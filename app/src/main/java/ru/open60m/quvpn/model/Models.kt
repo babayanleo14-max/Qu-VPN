@@ -27,12 +27,12 @@ data class PremiumStatus(
 data class Server(
     val key: String,
     val name: String,
-    val country: String,   // "DE", "NL", "RU"
-    val flag: String,      // эмодзи
+    val city: String,
+    val country: String,
+    val flagRes: Int,
     val premiumOnly: Boolean = false
 )
 
-// Состояние VPN
 sealed class VpnState {
     object Off : VpnState()
     object Connecting : VpnState()
