@@ -84,9 +84,9 @@ class MainActivity : AppCompatActivity() {
                 tvServerFlag.text  = server.flag
                 tvPremiumTag.visibility = if (server.premiumOnly) View.VISIBLE else View.GONE
 
-                setOnClickListener {
+                root.setOnClickListener {
                     if (server.premiumOnly && !vm.premium.value) {
-                        Toast.makeText(context, "🔒 Только для Premium", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(root.context, "🔒 Только для Premium", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
                     vm.selectServer(server.key)
